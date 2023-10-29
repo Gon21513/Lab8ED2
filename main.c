@@ -11,28 +11,17 @@
 #include "driverlib/gpio.h"
 #include "driverlib/timer.h"
 
-#define XTAL 16000000 //reloj externo de 16MHz
+#define RED_LED   GPIO_PIN_1 // Definición del pin del LED rojo
 
-// Definiciones para los LEDs
-#define RED_LED   GPIO_PIN_1
-#define BLUE_LED  GPIO_PIN_2
-#define GREEN_LED GPIO_PIN_3
-#define BUTTON_PIN GPIO_PIN_4 // Pin para el botón SW1
+// Prototipo de la función handler del Timer0
+void Timer0IntHandler(void);
 
-bool ledState = false; // Variable de estado del LED
-
-//-----------------------prototipos--------------------------------------------
-void setupTimer0(void); //Función del timer0
-void Timer0IntHandler(void); // Manejador de interrupción para Timer0
+// Prototipo de la función setupTimer0
+void setupTimer0(void);
 
 int main(void)
 {
-    //---------------------------reloj y puertos-------------------------------
     // Configura el reloj del sistema a 40 MHz.
-    // SYSCTL_XTAL_16MHZ  frecuencia del oscilador de 16 MHz.
-    // SYSCTL_OSC_MAIN  oscilador principal.
-    // SYSCTL_USE_PLL utilizar el PLL.
-    // SYSCTL_SYSDIV_5 divide la frecuencia del oscilador por 5 para obtener 40 MHz (200 MHz / 5 = 40 MHz)
     SysCtlClockSet(SYSCTL_SYSDIV_5 | SYSCTL_USE_PLL | SYSCTL_OSC_MAIN | SYSCTL_XTAL_16MHZ);
 
     // Habilita el reloj para el puerto F
@@ -41,49 +30,55 @@ int main(void)
     // Espera a que el periférico esté listo
     while(!SysCtlPeripheralReady(SYSCTL_PERIPH_GPIOF));
 
-    // Configura los pines de los LEDs como salidas
-    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, RED_LED | BLUE_LED | GREEN_LED);
+    // Configura el pin del LED rojo como salida
+    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, RED_LED);
 
-    //---------------------------tmr0----------------------------------------------
-    TimerIntRegister(TIMER0_BASE, TIMER_A, Timer0IntHandler); // Configura el manejador de interrupción para Timer0
-    setupTimer0(); //setup del timer0
+    // Configura el Timer0
+    setupTimer0();
 
+    // Habilita las interrupciones globales
+    IntMasterEnable();
+
+    // Bucle infinito
     while(1)
     {
-        // Código principal (si lo hay)
+        // El código dentro de esta sección se ejecuta continuamente en el bucle principal
+        // ...
     }
 }
 
+// Función para configurar el Timer0
 void setupTimer0(void){
-    IntMasterEnable(); // Habilitar interrupciones
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0); // Habilitar Timer0
-    while(!SysCtlPeripheralReady(SYSCTL_PERIPH_TIMER0)); // Esperar a que inicialice
-    TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC); // Configurar como periódico de 32 bits
-    TimerLoadSet(TIMER0_BASE, TIMER_BOTH, 80000000 - 1); // Configurar cada 2s
-    IntEnable(INT_TIMER0A); // Habilitar interrupción del timer0 bloque A
-    TimerIntEnable(TIMER0_BASE, TIMER_TIMA_TIMEOUT); // La interrupción será cuando se de un timeout (2s)
-    TimerEnable(TIMER0_BASE, TIMER_A); // Iniciar Timer0
+    // Habilita el reloj para el Timer0
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
+
+    // Espera a que el periférico del Timer0 esté listo
+    while(!SysCtlPeripheralReady(SYSCTL_PERIPH_TIMER0));
+
+    // Configura el Timer0 como periódico de 32 bits
+    TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC);
+
+    // Establece el valor de carga del Timer0 para una interrupción cada 2 segundos (0.5Hz)
+    TimerLoadSet(TIMER0_BASE, TIMER_BOTH, SysCtlClockGet() * 2 - 1);
+
+    // Habilita la interrupción del Timer0A
+    IntEnable(INT_TIMER0A);
+
+    // Habilita la interrupción por timeout en el Timer0A
+    TimerIntEnable(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
+
+    // Habilita el Timer0A
+    TimerEnable(TIMER0_BASE, TIMER_A);
 }
 
-void Timer0IntHandler(void){
-    // Limpia la bandera de interrupción del Timer 0 para evitar que se llame continuamente
-    // a esta función manejadora de interrupciones.
+// Función handler para la interrupción del Timer0
+void Timer0IntHandler(void)
+{
+    // Limpia la interrupción del Timer0A para evitar que se vuelva a activar de inmediato
     TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
 
-    // Toggling del estado de ledState.
-    // Si ledState es true, se cambia a false, y viceversa.
-    if (ledState == true) {
-        ledState = false;
-    } else {
-        ledState = true;
-    }
-
-    // Cambio del estado del LED rojo en función del valor de ledState.
-    // Si ledState es true (1), el LED rojo se enciende.
-    // Si ledState es false (0), el LED rojo se apaga.
-    if (ledState) {
-        GPIOPinWrite(GPIO_PORTF_BASE, RED_LED, RED_LED);  // Enciende el LED rojo
-    } else {
-        GPIOPinWrite(GPIO_PORTF_BASE, RED_LED, 0);  // Apaga el LED rojo
-    }
+    // Cambia el estado del LED rojo
+    GPIOPinWrite(GPIO_PORTF_BASE, RED_LED, GPIOPinRead(GPIO_PORTF_BASE, RED_LED) ^ RED_LED);
 }
+
+

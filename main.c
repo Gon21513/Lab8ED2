@@ -1,4 +1,5 @@
 //Luis Pedro Gonzalez 21513
+//Lab8
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -19,6 +20,8 @@
 void setupTimer0(void);
 void Timer0IntHandler(void);
 void setupUART0(void);
+void UARTIntHandler(void);
+
 
 int main(void)
 {
@@ -75,6 +78,23 @@ void setupUART0(void)
     GPIOPinTypeUART(GPIO_PORTA_BASE, GPIO_PIN_0 | GPIO_PIN_1);  // Configura los pines PA0 y PA1 para ser utilizados como pines de UART
     UARTConfigSetExpClk(UART0_BASE, SysCtlClockGet(), 115200,
                         (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE));  // Configura el UART0 con una tasa de baudios de 115200, 8 bits de datos, 1 bit de parada y sin paridad
+
+
+    //uart handler
+    IntEnable(INT_UART0);  // Habilita la interrupción del UART0
+    UARTIntEnable(UART0_BASE, UART_INT_RX | UART_INT_TX);  // Habilita las interrupciones de recepción y transmisión del UART0
+
+}
+
+
+// Función handler para la interrupción del UART
+void UARTIntHandler(void)
+{
+    uint32_t status; //para almacenar el estao del uart
+
+    status = UARTIntStatus(UART0_BASE, true);  // Actualizado a status
+    UARTIntClear(UART0_BASE, status);  // Actualizado a status
+
 }
 
 

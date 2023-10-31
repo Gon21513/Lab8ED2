@@ -14,6 +14,16 @@
 #include "driverlib/pin_map.h"  // Necesario para la configuración de pines del UART
 #include "driverlib/uart.h"     // Librería del driver UART
 
+volatile uint32_t ui32Loop; //variable para el delay
+
+
+
+//delay para los LEDS
+void delay(void) {
+    for(ui32Loop = 0; ui32Loop < 3000000; ui32Loop++) {} // Simple delay
+}
+
+
 #define TOGGLE_PIN   GPIO_PIN_6 // Definición del pin para toggle
 #define RED_LED      GPIO_PIN_1 // Definición del pin para el LED rojo
 #define GREEN_LED    GPIO_PIN_3 // Definición del pin para el LED verde
@@ -68,7 +78,7 @@ void setupTimer0(void)
 
     // TimerLoadSet(TIMER0_BASE, TIMER_BOTH, 40000000 * 2 - 1);
 
-    TimerLoadSet(TIMER0_BASE, TIMER_BOTH, SysCtlClockGet() * 2 - 1);  // Establece el valor de carga del Timer0 para una interrupción cada 2 segundos (0.5Hz)
+    TimerLoadSet(TIMER0_BASE, TIMER_BOTH, SysCtlClockGet() / 2 - 1);  // Establece el valor de carga del Timer0 para una interrupción cada 2 segundos (0.5Hz)
     IntEnable(INT_TIMER0A);  // Habilita la interrupción del Timer0A
     TimerIntEnable(TIMER0_BASE, TIMER_TIMA_TIMEOUT);  // Habilita la interrupción por timeout en el Timer0A
     TimerEnable(TIMER0_BASE, TIMER_A);  // Habilita el Timer0A
@@ -78,13 +88,13 @@ void Timer0IntHandler(void)
 {
     TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);  // Limpia la interrupción del Timer0A
 
-    // Toggling LEDs según las variables de toggle
     if (toggle_red)
         GPIOPinWrite(GPIO_PORTF_BASE, RED_LED, GPIOPinRead(GPIO_PORTF_BASE, RED_LED) ^ RED_LED);  // Toggle red LED
     if (toggle_green)
         GPIOPinWrite(GPIO_PORTF_BASE, GREEN_LED, GPIOPinRead(GPIO_PORTF_BASE, GREEN_LED) ^ GREEN_LED);  // Toggle green LED
     if (toggle_blue)
         GPIOPinWrite(GPIO_PORTF_BASE, BLUE_LED, GPIOPinRead(GPIO_PORTF_BASE, BLUE_LED) ^ BLUE_LED);  // Toggle blue LED
+
 
     // Toggling TOGGLE_PIN en el puerto A
     GPIOPinWrite(GPIO_PORTA_BASE, TOGGLE_PIN, GPIOPinRead(GPIO_PORTA_BASE, TOGGLE_PIN) ^ TOGGLE_PIN);  // Toggle TOGGLE_PIN
@@ -93,9 +103,7 @@ void Timer0IntHandler(void)
 void setupUART0(void)
 {
     SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);  // Habilita el reloj para el periférico UART0
-    while(!SysCtlPeripheralReady(SYSCTL_PERIPH_UART0));  // Espera a que el periférico UART0 esté listo
     SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);  // Habilita el reloj para el puerto GPIOA (utilizado por UART0)
-    while(!SysCtlPeripheralReady(SYSCTL_PERIPH_GPIOA));  // Espera a que el periférico GPIOA esté listo
     GPIOPinConfigure(GPIO_PA0_U0RX);  // Configura los pines PA0 y PA1 para ser utilizados como pines de UART
     GPIOPinConfigure(GPIO_PA1_U0TX);  // Configura los pines PA0 y PA1 para ser utilizados como pines de UART
     GPIOPinTypeUART(GPIO_PORTA_BASE, GPIO_PIN_0 | GPIO_PIN_1);  // Configura los pines PA0 y PA1 para ser utilizados como pines de UART
@@ -106,7 +114,7 @@ void setupUART0(void)
 
     IntEnable(INT_UART0); //Habilitar interrupciones para el UART0
 
-    UARTIntEnable(UART0_BASE, UART_INT_RX | UART_INT_TX);  // Habilita las interrupciones de recepción y transmisión del UART0
+    UARTIntEnable(UART0_BASE, UART_INT_RX | UART_INT_RT);  // Habilita las interrupciones de recepción y transmisión del UART0
 
     UARTEnable(UART0_BASE); //Iniciar UART0
 }
@@ -122,20 +130,37 @@ void UARTIntHandler(void)
     // Solo proceder si hay caracteres disponibles
     if(UARTCharsAvail(UART0_BASE))
     {
-        cReceived = UARTCharGet(UART0_BASE);  // Guardar el dato en una variable
+        cReceived = UARTCharGetNonBlocking(UART0_BASE);  // Guardar el dato en una variable
         UARTCharPutNonBlocking(UART0_BASE, cReceived);  // Devuelve el dato recibido al transmisor
     }
 
     if (cReceived == 'r')  // Si se recibió una 'r'
     {
-        GPIOPinWrite(GPIO_PORTF_BASE, RED_LED, GPIOPinRead(GPIO_PORTF_BASE, RED_LED) ^ RED_LED);  // Toggle del led rojo
+
+        GPIOPinWrite(GPIO_PORTF_BASE, RED_LED | BLUE_LED | GREEN_LED, 0);//apaga
+
+        toggle_red = !toggle_red;
+
+        //GPIOPinWrite(GPIO_PORTF_BASE, RED_LED, GPIOPinRead(GPIO_PORTF_BASE, RED_LED) ^ RED_LED);  // Toggle del led rojo
     }
     else if (cReceived == 'g')
     {
-        GPIOPinWrite(GPIO_PORTF_BASE, GREEN_LED, GPIOPinRead(GPIO_PORTF_BASE, GREEN_LED) ^ GREEN_LED);  // Toggle del led verde
+        //GPIOPinWrite(GPIO_PORTF_BASE, GREEN_LED, GPIOPinRead(GPIO_PORTF_BASE, GREEN_LED) ^ GREEN_LED);  // Toggle del led verde
+        GPIOPinWrite(GPIO_PORTF_BASE, RED_LED | BLUE_LED | GREEN_LED, 0);//apaga
+
+        toggle_green = !toggle_green;
+
     }
     else if (cReceived == 'b')
     {
-        GPIOPinWrite(GPIO_PORTF_BASE, BLUE_LED, GPIOPinRead(GPIO_PORTF_BASE, BLUE_LED) ^ BLUE_LED);  // Toggle del led azul
+        GPIOPinWrite(GPIO_PORTF_BASE, RED_LED | BLUE_LED | GREEN_LED, 0);//apaga
+
+        //GPIOPinWrite(GPIO_PORTF_BASE, BLUE_LED, GPIOPinRead(GPIO_PORTF_BASE, BLUE_LED) ^ BLUE_LED);  // Toggle del led azul
+        toggle_blue = !toggle_blue;
+
     }
 }
+
+
+
+

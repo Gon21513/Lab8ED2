@@ -15,6 +15,14 @@
 #include "driverlib/uart.h"     // Librería del driver UART
 
 #define TOGGLE_PIN   GPIO_PIN_6 // Definición del pin para toggle
+#define RED_LED      GPIO_PIN_1 // Definición del pin para el LED rojo
+#define GREEN_LED    GPIO_PIN_3 // Definición del pin para el LED verde
+#define BLUE_LED     GPIO_PIN_2 // Definición del pin para el LED azul
+
+// Variables globales para mantener el estado de los LEDs
+volatile bool toggle_red = false;
+volatile bool toggle_green = false;
+volatile bool toggle_blue = false;
 
 // Prototipos de funciones
 void setupTimer0(void);
@@ -30,10 +38,17 @@ int main(void)
     // SYSCTL_USE_PLL utilizar el PLL.
     // SYSCTL_SYSDIV_5 divide la frecuencia del oscilador por 5 para obtener 40 MHz (200 MHz / 5 = 40 MHz)
     // Configura el reloj del sistema a 40 MHz.
-    SysCtlClockSet(SYSCTL_SYSDIV_5 | SYSCTL_USE_PLL | SYSCTL_OSC_MAIN | SYSCTL_XTAL_16MHZ);  // Configura el reloj del sistema a 40 MHz
+    // Configura el reloj del sistema a 40 MHz.
+    SysCtlClockSet(SYSCTL_SYSDIV_5 | SYSCTL_USE_PLL | SYSCTL_OSC_MAIN | SYSCTL_XTAL_16MHZ);
+
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);  // Habilita el reloj para el puerto F
+    while(!SysCtlPeripheralReady(SYSCTL_PERIPH_GPIOF));  // Espera a que el periférico esté listo
+    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, RED_LED | GREEN_LED | BLUE_LED);  // Configura los LEDs como salida
+
     SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);  // Habilita el reloj para el puerto A
     while(!SysCtlPeripheralReady(SYSCTL_PERIPH_GPIOA));  // Espera a que el periférico esté listo
     GPIOPinTypeGPIOOutput(GPIO_PORTA_BASE, TOGGLE_PIN);  // Configura el pin de toggle como salida
+
     setupTimer0();  // Configura el Timer0
     setupUART0();  // Configura el UART0
     IntMasterEnable();  // Habilita las interrupciones globales
@@ -61,8 +76,18 @@ void setupTimer0(void)
 
 void Timer0IntHandler(void)
 {
-    TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);  // Limpia la interrupción del Timer0A para evitar que se vuelva a activar de inmediato
-    GPIOPinWrite(GPIO_PORTA_BASE, TOGGLE_PIN, GPIOPinRead(GPIO_PORTA_BASE, TOGGLE_PIN) ^ TOGGLE_PIN);  // Cambia el estado del pin de toggle
+    TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);  // Limpia la interrupción del Timer0A
+
+    // Toggling LEDs según las variables de toggle
+    if (toggle_red)
+        GPIOPinWrite(GPIO_PORTF_BASE, RED_LED, GPIOPinRead(GPIO_PORTF_BASE, RED_LED) ^ RED_LED);  // Toggle red LED
+    if (toggle_green)
+        GPIOPinWrite(GPIO_PORTF_BASE, GREEN_LED, GPIOPinRead(GPIO_PORTF_BASE, GREEN_LED) ^ GREEN_LED);  // Toggle green LED
+    if (toggle_blue)
+        GPIOPinWrite(GPIO_PORTF_BASE, BLUE_LED, GPIOPinRead(GPIO_PORTF_BASE, BLUE_LED) ^ BLUE_LED);  // Toggle blue LED
+
+    // Toggling TOGGLE_PIN en el puerto A
+    GPIOPinWrite(GPIO_PORTA_BASE, TOGGLE_PIN, GPIOPinRead(GPIO_PORTA_BASE, TOGGLE_PIN) ^ TOGGLE_PIN);  // Toggle TOGGLE_PIN
 }
 
 void setupUART0(void)
@@ -74,21 +99,43 @@ void setupUART0(void)
     GPIOPinConfigure(GPIO_PA0_U0RX);  // Configura los pines PA0 y PA1 para ser utilizados como pines de UART
     GPIOPinConfigure(GPIO_PA1_U0TX);  // Configura los pines PA0 y PA1 para ser utilizados como pines de UART
     GPIOPinTypeUART(GPIO_PORTA_BASE, GPIO_PIN_0 | GPIO_PIN_1);  // Configura los pines PA0 y PA1 para ser utilizados como pines de UART
-    UARTConfigSetExpClk(UART0_BASE, SysCtlClockGet(), 115200,
-                        (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE));  // Configura el UART0 con una tasa de baudios de 115200, 8 bits de datos, 1 bit de parada y sin paridad
+    UARTConfigSetExpClk(UART0_BASE, SysCtlClockGet(), 115200, (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE));  // Configura el UART0 con una tasa de baudios de 115200, 8 bits de datos, 1 bit de parada y sin paridad
 
     //uart handler
-    IntEnable(INT_UART0);  // Habilita la interrupción del UART0
+
+
+    IntEnable(INT_UART0); //Habilitar interrupciones para el UART0
+
     UARTIntEnable(UART0_BASE, UART_INT_RX | UART_INT_TX);  // Habilita las interrupciones de recepción y transmisión del UART0
 
+    UARTEnable(UART0_BASE); //Iniciar UART0
 }
+
+
 
 // Función handler para la interrupción del UART
 void UARTIntHandler(void)
 {
-    uint32_t status; //para almacenar el estado del uart
+    char cReceived = 0;  // Variable para guardar el dato, inicializada en 0
+    UARTIntClear(UART0_BASE, UART_INT_RX | UART_INT_RT);  // Limpiar bandera de interrupción para recepción y transmisión
 
-    status = UARTIntStatus(UART0_BASE, true);  // Actualizado a status
-    UARTIntClear(UART0_BASE, status);  // Actualizado a status
+    // Solo proceder si hay caracteres disponibles
+    if(UARTCharsAvail(UART0_BASE))
+    {
+        cReceived = UARTCharGet(UART0_BASE);  // Guardar el dato en una variable
+        UARTCharPutNonBlocking(UART0_BASE, cReceived);  // Devuelve el dato recibido al transmisor
+    }
+
+    if (cReceived == 'r')  // Si se recibió una 'r'
+    {
+        GPIOPinWrite(GPIO_PORTF_BASE, RED_LED, GPIOPinRead(GPIO_PORTF_BASE, RED_LED) ^ RED_LED);  // Toggle del led rojo
+    }
+    else if (cReceived == 'g')
+    {
+        GPIOPinWrite(GPIO_PORTF_BASE, GREEN_LED, GPIOPinRead(GPIO_PORTF_BASE, GREEN_LED) ^ GREEN_LED);  // Toggle del led verde
+    }
+    else if (cReceived == 'b')
+    {
+        GPIOPinWrite(GPIO_PORTF_BASE, BLUE_LED, GPIOPinRead(GPIO_PORTF_BASE, BLUE_LED) ^ BLUE_LED);  // Toggle del led azul
+    }
 }
-
